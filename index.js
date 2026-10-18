@@ -2,54 +2,74 @@ import http from 'node:http';
 
 const server = http.createServer();
 
-server.on('request', (req, res) => {
-  const url = new URL(`http://localhost:3000${req.url}`);
-  const method = req.method;
-  
-  if (method !== 'GET') {
-    res.writeHead(405, {'Content-Type': 'text/plain','Allow': 'GET'});
-    res.end('Unsupported method');
-  } else if (url.pathname === '/') {
-    res.writeHead(200, {'Content-Type': 'text/plain'});
-    res.end(`Welcome to the WorkShop Inventory API!`);
-  } else if (url.pathname === '/health') {
-    res.writeHead(200, {'Content-Type': 'text/plain'
-    });
-    res.end('API is online');
-  } else if (url.pathname === '/api/tools') {
-    if (url.searchParams.size === 0) {
-      let json = JSON.stringify(tools);
-      res.writeHead(200, {'Content-Type': 'application/json',
-      });
-      res.end(json);
-    } else if (url.searchParams.size === 1 && url.searchParams.has('category')) {
-      let category = url.searchParams.get('category');
+const routeMap = new Map([
+  ['GET /', handleGetRoot],
+  ['GET /health', handleGetHealth],
+  ['GET /api/tools', handleGetTools],
+]);
 
-        let json = JSON.stringify(getToolsByCategory(category));
-        res.writeHead(200, {'Content-Type': 'application/json',
-        });
-        res.end(json);
-      
-    } else {
-      res.writeHead(400, {'Content-Type': 'text/plain'});
-      res.end('Non existent search parameter');
-    }
-  } else if (/^\/api\/tools\/\d+$/.test(url.pathname)) {
-    let id = url.pathname.match(/\d+/g)[0];
-    let tool = getToolById(Number(id));
-    if (!tool) {
-      res.writeHead(404, {'Content-Type': 'text/plain'});
-      res.end('Tool not found');
-    } else {
-    let json = JSON.stringify(tool);
-    res.writeHead(200, {'Content-Type': 'application/json',
-    });
-    res.end(json);
-    }
+function handleGetRoot(req, res) {
+  res.writeHead(200, {'Content-Type': 'text/plain'});
+  res.end('Welcome to the Workshop Inventory API!');
+}
+
+function handleGetHealth(req, res) {
+  res.writeHead(200, {'Content-Type': 'text/plain'});
+  res.end('API is online');
+}
+
+function handleGetTools(req, res, url) {
+  const category = url.searchParams.get('category');
+
+  const result = category === null ? tools : getToolsByCategory(category);
+  res.writeHead(200, {'Content-Type': 'application/json'});
+  res.end(JSON.stringify(result));
+}
+
+function handleGetTool(req, res, id) {
+  let tool = getToolById(id);
+  if (tool) {
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify(tool));
   } else {
     res.writeHead(404, {'Content-Type': 'text/plain'});
-    res.end(`unknown path`);
+    res.end(`No tool with id: ${id}`);
   }
+}
+
+function handleBadMethod(req, res) {
+  res.writeHead(405, {'Content-Type': 'text/plain','Allow': 'GET'});
+  res.end('Unsupported method');
+}
+
+function handleNotFound(req, res) {
+  res.writeHead(404, {'Content-Type': 'text/plain'});
+  res.end('Not Found');
+}
+
+server.on('request', (req, res) => {
+  const url = new URL(`http://localhost:3000${req.url}`);
+  const route = routeMap.get(`${req.method} ${url.pathname}`);
+
+  if (req.method !== 'GET') {
+    handleBadMethod(req, res);
+    return;
+  }
+  
+  if (route) {
+    route(req, res, url);
+    return;
+  }
+
+  const match = url.pathname.match(/^\/api\/tools\/(\d+)$/);
+
+  if (match) {
+    handleGetTool(req, res, Number(match[1]));
+    return;
+  }
+
+  handleNotFound(req, res);
+  return;
   
 });
 
